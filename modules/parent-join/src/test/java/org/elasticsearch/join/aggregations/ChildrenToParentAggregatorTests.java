@@ -14,12 +14,12 @@ import org.apache.lucene.document.SortedNumericDocValuesField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermInSetQuery;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.tests.index.RandomIndexWriter;
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.common.lucene.index.ElasticsearchDirectoryReader;
 import org.elasticsearch.core.Tuple;
@@ -39,7 +39,7 @@ import org.elasticsearch.search.aggregations.AggregationBuilder;
 import org.elasticsearch.search.aggregations.AggregatorTestCase;
 import org.elasticsearch.search.aggregations.bucket.terms.LongTerms;
 import org.elasticsearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
-import org.elasticsearch.search.aggregations.metrics.InternalMin;
+import org.elasticsearch.search.aggregations.metrics.Min;
 import org.elasticsearch.search.aggregations.metrics.MinAggregationBuilder;
 
 import java.io.IOException;
@@ -71,7 +71,7 @@ public class ChildrenToParentAggregatorTests extends AggregatorTestCase {
             Aggregation parentAggregation = childrenToParent.getAggregations().get("in_parent");
             assertEquals(0, childrenToParent.getDocCount());
             assertNotNull("Aggregations: " + childrenToParent.getAggregations().asMap(), parentAggregation);
-            assertEquals(Double.POSITIVE_INFINITY, ((InternalMin) parentAggregation).getValue(), Double.MIN_VALUE);
+            assertEquals(Double.POSITIVE_INFINITY, ((Min) parentAggregation).value(), Double.MIN_VALUE);
             assertFalse(JoinAggregationInspectionHelper.hasValue(childrenToParent));
         });
         indexReader.close();
@@ -105,7 +105,7 @@ public class ChildrenToParentAggregatorTests extends AggregatorTestCase {
                 expectedTotalParents,
                 parent.getDocCount()
             );
-            assertEquals(expectedMinValue, ((InternalMin) parent.getAggregations().get("in_parent")).getValue(), Double.MIN_VALUE);
+            assertEquals(expectedMinValue, ((Min) parent.getAggregations().get("in_parent")).value(), Double.MIN_VALUE);
             assertTrue(JoinAggregationInspectionHelper.hasValue(parent));
         });
 
@@ -119,7 +119,7 @@ public class ChildrenToParentAggregatorTests extends AggregatorTestCase {
                 );
                 assertEquals(
                     expectedParentChildRelations.get(parent).v2(),
-                    ((InternalMin) aggregation.getAggregations().get("in_parent")).getValue(),
+                    ((Min) aggregation.getAggregations().get("in_parent")).value(),
                     Double.MIN_VALUE
                 );
             });
@@ -268,7 +268,7 @@ public class ChildrenToParentAggregatorTests extends AggregatorTestCase {
         aggregationBuilder.subAggregation(new MinAggregationBuilder("in_parent").field("number"));
 
         MappedFieldType fieldType = new NumberFieldMapper.NumberFieldType("number", NumberFieldMapper.NumberType.LONG);
-        InternalParent result = searchAndReduce(indexSearcher, query, aggregationBuilder, withJoinFields(fieldType));
+        InternalParent result = searchAndReduce(new AggTestConfig(indexSearcher, query, aggregationBuilder, withJoinFields(fieldType)));
         verify.accept(result);
     }
 
@@ -278,7 +278,7 @@ public class ChildrenToParentAggregatorTests extends AggregatorTestCase {
         aggregationBuilder.subAggregation(new TermsAggregationBuilder("value_terms").field("number"));
 
         MappedFieldType fieldType = new NumberFieldMapper.NumberFieldType("number", NumberFieldMapper.NumberType.LONG);
-        InternalParent result = searchAndReduce(indexSearcher, query, aggregationBuilder, withJoinFields(fieldType));
+        InternalParent result = searchAndReduce(new AggTestConfig(indexSearcher, query, aggregationBuilder, withJoinFields(fieldType)));
         verify.accept(result);
     }
 
@@ -293,7 +293,9 @@ public class ChildrenToParentAggregatorTests extends AggregatorTestCase {
 
         MappedFieldType fieldType = new NumberFieldMapper.NumberFieldType("number", NumberFieldMapper.NumberType.LONG);
         MappedFieldType subFieldType = new NumberFieldMapper.NumberFieldType("subNumber", NumberFieldMapper.NumberType.LONG);
-        LongTerms result = searchAndReduce(indexSearcher, query, aggregationBuilder, withJoinFields(fieldType, subFieldType));
+        LongTerms result = searchAndReduce(
+            new AggTestConfig(indexSearcher, query, aggregationBuilder, withJoinFields(fieldType, subFieldType))
+        );
         verify.accept(result);
     }
 

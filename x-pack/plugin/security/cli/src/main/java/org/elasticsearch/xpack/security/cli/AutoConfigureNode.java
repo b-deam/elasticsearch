@@ -12,11 +12,14 @@ import joptsimple.OptionSpec;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.lucene.util.SetOnce;
+import org.bouncycastle.asn1.x509.ExtendedKeyUsage;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.GeneralNames;
+import org.bouncycastle.asn1.x509.KeyPurposeId;
 import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.cli.ExitCodes;
+import org.elasticsearch.cli.ProcessInfo;
 import org.elasticsearch.cli.Terminal;
 import org.elasticsearch.cli.UserException;
 import org.elasticsearch.cluster.coordination.ClusterBootstrapService;
@@ -138,29 +141,25 @@ public class AutoConfigureNode extends EnvironmentAwareCommand {
 
     private final OptionSpec<String> enrollmentTokenParam = parser.accepts("enrollment-token", "The enrollment token to use")
         .withRequiredArg();
-    private final OptionSpec<Void> reconfigure = parser.accepts("reconfigure");
+    private final boolean inReconfigureMode;
     private final BiFunction<Environment, String, CommandLineHttpClient> clientFunction;
 
-    public AutoConfigureNode(BiFunction<Environment, String, CommandLineHttpClient> clientFunction) {
+    public AutoConfigureNode(boolean reconfigure, BiFunction<Environment, String, CommandLineHttpClient> clientFunction) {
         super("Generates all the necessary security configuration for a node in a secured cluster");
         // This "cli utility" is invoked from the node startup script, where it is passed all the
         // node startup options unfiltered. It cannot consume most of them, but it does need to inspect the `-E` ones.
         parser.allowsUnrecognizedOptions();
+        this.inReconfigureMode = reconfigure;
         this.clientFunction = clientFunction;
     }
 
-    public AutoConfigureNode() {
-        this(CommandLineHttpClient::new);
-    }
-
-    public static void main(String[] args) throws Exception {
-        exit(new AutoConfigureNode().main(args, Terminal.DEFAULT));
+    public AutoConfigureNode(boolean reconfigure) {
+        this(reconfigure, CommandLineHttpClient::new);
     }
 
     @Override
-    protected void execute(Terminal terminal, OptionSet options, Environment env) throws Exception {
+    public void execute(Terminal terminal, OptionSet options, Environment env, ProcessInfo processInfo) throws Exception {
         final boolean inEnrollmentMode = options.has(enrollmentTokenParam);
-        final boolean inReconfigureMode = options.has(reconfigure);
 
         // skipping security auto-configuration because node considered as restarting.
         for (Path dataPath : env.dataFiles()) {
@@ -210,7 +209,7 @@ public class AutoConfigureNode extends EnvironmentAwareCommand {
             if (false == inEnrollmentMode) {
                 throw new UserException(ExitCodes.USAGE, "enrollment-token is a mandatory parameter when reconfiguring the node");
             }
-            env = possiblyReconfigureNode(env, terminal);
+            env = possiblyReconfigureNode(env, terminal, options, processInfo);
         }
 
         // only perform auto-configuration if the existing configuration is not conflicting (eg Security already enabled)
@@ -462,7 +461,8 @@ public class AutoConfigureNode extends EnvironmentAwareCommand {
                 httpCaKey,
                 false,
                 HTTP_CERTIFICATE_DAYS,
-                SIGNATURE_ALGORITHM
+                SIGNATURE_ALGORITHM,
+                Set.of(new ExtendedKeyUsage(KeyPurposeId.id_kp_serverAuth))
             );
 
             // the HTTP CA PEM file is provided "just in case". The node doesn't use it, but clients (configured manually, outside of the
@@ -513,7 +513,7 @@ public class AutoConfigureNode extends EnvironmentAwareCommand {
 
         final SetOnce<SecureString> nodeKeystorePassword = new SetOnce<>();
         try (KeyStoreWrapper nodeKeystore = KeyStoreWrapper.bootstrap(env.configFile(), () -> {
-            nodeKeystorePassword.set(new SecureString(terminal.readSecret("", KeyStoreWrapper.MAX_PASSPHRASE_LENGTH)));
+            nodeKeystorePassword.set(new SecureString(terminal.readSecret("")));
             return nodeKeystorePassword.get().clone();
         })) {
             // do not overwrite keystore entries
@@ -782,13 +782,11 @@ public class AutoConfigureNode extends EnvironmentAwareCommand {
                         || localFinalEnv.settings().hasValue(NetworkService.GLOBAL_NETWORK_BIND_HOST_SETTING.getKey())
                         || localFinalEnv.settings().hasValue(NetworkService.GLOBAL_NETWORK_PUBLISH_HOST_SETTING.getKey()))) {
                         bw.newLine();
-                        bw.write("# Allow HTTP API connections from localhost and local networks");
+                        bw.write("# Allow HTTP API connections from anywhere");
                         bw.newLine();
                         bw.write("# Connections are encrypted and require user authentication");
                         bw.newLine();
-                        bw.write(
-                            HttpTransportSettings.SETTING_HTTP_HOST.getKey() + ": " + hostSettingValue(NetworkUtils.getAllAddresses())
-                        );
+                        bw.write(HttpTransportSettings.SETTING_HTTP_HOST.getKey() + ": 0.0.0.0");
                         bw.newLine();
                     }
                     if (false == (localFinalEnv.settings().hasValue(TransportSettings.HOST.getKey())
@@ -798,7 +796,7 @@ public class AutoConfigureNode extends EnvironmentAwareCommand {
                         || localFinalEnv.settings().hasValue(NetworkService.GLOBAL_NETWORK_BIND_HOST_SETTING.getKey())
                         || localFinalEnv.settings().hasValue(NetworkService.GLOBAL_NETWORK_PUBLISH_HOST_SETTING.getKey()))) {
                         bw.newLine();
-                        bw.write("# Allow other nodes to join the cluster from localhost and local networks");
+                        bw.write("# Allow other nodes to join the cluster from anywhere");
                         bw.newLine();
                         bw.write("# Connections are encrypted and mutually authenticated");
                         bw.newLine();
@@ -806,7 +804,7 @@ public class AutoConfigureNode extends EnvironmentAwareCommand {
                             || false == anyRemoteHostNodeAddress(transportAddresses, NetworkUtils.getAllAddresses())) {
                             bw.write("#");
                         }
-                        bw.write(TransportSettings.HOST.getKey() + ": " + hostSettingValue(NetworkUtils.getAllAddresses()));
+                        bw.write(TransportSettings.HOST.getKey() + ": 0.0.0.0");
                         bw.newLine();
                     }
                     bw.newLine();
@@ -880,15 +878,8 @@ public class AutoConfigureNode extends EnvironmentAwareCommand {
         return false;
     }
 
-    protected String hostSettingValue(InetAddress[] allAddresses) {
-        if (Arrays.stream(allAddresses).anyMatch(InetAddress::isSiteLocalAddress)) {
-            return "[_local_, _site_]";
-        } else {
-            return "[_local_]";
-        }
-    }
-
-    private Environment possiblyReconfigureNode(Environment env, Terminal terminal) throws UserException {
+    private Environment possiblyReconfigureNode(Environment env, Terminal terminal, OptionSet options, ProcessInfo processInfo)
+        throws UserException {
         // We remove the existing auto-configuration stanza from elasticsearch.yml, the elastisearch.keystore and
         // the directory with the auto-configured TLS key material, and then proceed as if elasticsearch is started
         // with --enrolment-token token, in the first place.
@@ -931,7 +922,7 @@ public class AutoConfigureNode extends EnvironmentAwareCommand {
                 );
             }
             // rebuild the environment after removing the settings that were added in auto-configuration.
-            return createEnv(Map.of("path.home", env.settings().get("path.home")));
+            return createEnv(options, processInfo);
         } else {
             throw new UserException(
                 ExitCodes.USAGE,
@@ -1266,9 +1257,7 @@ public class AutoConfigureNode extends EnvironmentAwareCommand {
             try (
                 KeyStoreWrapper existingKeystore = KeyStoreWrapper.load(env.configFile());
                 SecureString keystorePassword = existingKeystore.hasPassword()
-                    ? new SecureString(
-                        terminal.readSecret("Enter password for the elasticsearch keystore: ", KeyStoreWrapper.MAX_PASSPHRASE_LENGTH)
-                    )
+                    ? new SecureString(terminal.readSecret("Enter password for the elasticsearch keystore: "))
                     : new SecureString(new char[0]);
             ) {
                 existingKeystore.decrypt(keystorePassword.getChars());

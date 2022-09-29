@@ -97,6 +97,11 @@ public abstract class GeoGridAggregationBuilder extends ValuesSourceAggregationB
     }
 
     @Override
+    public boolean supportsSampling() {
+        return true;
+    }
+
+    @Override
     protected ValuesSourceType defaultValueSourceType() {
         return CoreValuesSourceType.GEOPOINT;
     }
@@ -226,7 +231,7 @@ public abstract class GeoGridAggregationBuilder extends ValuesSourceAggregationB
         }
         if (geoBoundingBox.isUnbounded() == false) {
             builder.startObject(GeoBoundingBox.BOUNDS_FIELD.getPreferredName());
-            geoBoundingBox.toXContentFragment(builder, true);
+            geoBoundingBox.toXContentFragment(builder);
             builder.endObject();
         }
         return builder;

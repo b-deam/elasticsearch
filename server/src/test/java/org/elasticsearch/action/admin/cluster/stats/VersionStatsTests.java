@@ -33,7 +33,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.equalTo;
@@ -82,7 +81,7 @@ public class VersionStatsTests extends AbstractWireSerializingTestCase<VersionSt
                 );
                 default -> throw new IllegalArgumentException("unexpected branch");
             };
-        }).collect(Collectors.toList()));
+        }).toList());
     }
 
     public void testCreation() {
@@ -116,7 +115,7 @@ public class VersionStatsTests extends AbstractWireSerializingTestCase<VersionSt
         ShardStats shardStats = new ShardStats(
             shardRouting,
             new ShardPath(false, path, path, shardRouting.shardId()),
-            new CommonStats(null, indexShard, new CommonStatsFlags(CommonStatsFlags.Flag.Store)),
+            CommonStats.getShardLevelStats(null, indexShard, new CommonStatsFlags(CommonStatsFlags.Flag.Store)),
             null,
             null,
             null

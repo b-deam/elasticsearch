@@ -7,13 +7,15 @@
  */
 package org.elasticsearch.cluster.metadata;
 
+import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.admin.indices.delete.DeleteIndexClusterStateUpdateRequest;
 import org.elasticsearch.cluster.ClusterName;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.SnapshotsInProgress;
 import org.elasticsearch.cluster.block.ClusterBlocks;
 import org.elasticsearch.cluster.routing.RoutingTable;
 import org.elasticsearch.cluster.routing.allocation.AllocationService;
-import org.elasticsearch.common.collect.ImmutableOpenMap;
+import org.elasticsearch.cluster.service.ClusterStateTaskExecutorUtils;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.core.Tuple;
 import org.elasticsearch.index.Index;
@@ -33,10 +35,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
@@ -71,7 +73,7 @@ public class MetadataDeleteIndexServiceTests extends ESTestCase {
         String index = randomAlphaOfLength(5);
         Snapshot snapshot = new Snapshot("doesn't matter", new SnapshotId("snapshot name", "snapshot uuid"));
         SnapshotsInProgress snaps = SnapshotsInProgress.EMPTY.withAddedEntry(
-            new SnapshotsInProgress.Entry(
+            SnapshotsInProgress.Entry.snapshot(
                 snapshot,
                 true,
                 false,
@@ -81,7 +83,7 @@ public class MetadataDeleteIndexServiceTests extends ESTestCase {
                 Collections.emptyList(),
                 System.currentTimeMillis(),
                 (long) randomIntBetween(0, 1000),
-                ImmutableOpenMap.of(),
+                Map.of(),
                 null,
                 SnapshotInfoTestUtils.randomUserMetadata(),
                 VersionUtils.randomVersion(random())
@@ -101,7 +103,7 @@ public class MetadataDeleteIndexServiceTests extends ESTestCase {
         );
     }
 
-    public void testDeleteUnassigned() {
+    public void testDeleteUnassigned() throws Exception {
         // Create an unassigned index
         String index = randomAlphaOfLength(5);
         ClusterState before = clusterState(index);
@@ -110,7 +112,15 @@ public class MetadataDeleteIndexServiceTests extends ESTestCase {
         when(allocationService.reroute(any(ClusterState.class), any(String.class))).then(i -> i.getArguments()[0]);
 
         // Remove it
-        ClusterState after = service.deleteIndices(before, Set.of(before.metadata().getIndices().get(index).getIndex()));
+        final ClusterState after = ClusterStateTaskExecutorUtils.executeAndAssertSuccessful(
+            before,
+            service.executor,
+            List.of(
+                new DeleteIndexClusterStateUpdateRequest(ActionListener.noop()).indices(
+                    new Index[] { before.metadata().getIndices().get(index).getIndex() }
+                )
+            )
+        );
 
         // It is gone
         assertNull(after.metadata().getIndices().get(index));
@@ -143,6 +153,7 @@ public class MetadataDeleteIndexServiceTests extends ESTestCase {
         assertNull(after.routingTable().index(index));
         assertNull(after.blocks().indices().get(index));
         assertNull(after.metadata().getIndicesLookup().get(alias));
+        assertThat(after.metadata().aliasedIndices(alias), empty());
     }
 
     public void testDeleteBackingIndexForDataStream() {
@@ -174,7 +185,7 @@ public class MetadataDeleteIndexServiceTests extends ESTestCase {
 
         List<Integer> indexNumbersToDelete = randomSubsetOf(
             numBackingIndicesToDelete,
-            IntStream.rangeClosed(1, numBackingIndices - 1).boxed().collect(Collectors.toList())
+            IntStream.rangeClosed(1, numBackingIndices - 1).boxed().toList()
         );
 
         Set<Index> indicesToDelete = new HashSet<>();

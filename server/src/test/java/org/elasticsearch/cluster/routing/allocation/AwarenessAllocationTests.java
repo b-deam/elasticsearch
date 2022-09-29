@@ -34,7 +34,6 @@ import org.elasticsearch.common.settings.Settings;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.UnaryOperator;
-import java.util.stream.StreamSupport;
 
 import static java.util.Collections.emptyMap;
 import static java.util.Collections.singletonList;
@@ -872,12 +871,15 @@ public class AwarenessAllocationTests extends ESAllocationTestCase {
                     .add(newNode("A-2", singletonMap("zone", "a")))
                     .add(newNode("A-3", singletonMap("zone", "a")))
                     .add(newNode("A-4", singletonMap("zone", "a")))
-                    .add(newNode("B-0", singletonMap("zone", "b")))
             )
             .build();
         clusterState = strategy.reroute(clusterState, "reroute");
         assertThat(shardsWithState(clusterState.getRoutingNodes(), STARTED).size(), equalTo(0));
         assertThat(shardsWithState(clusterState.getRoutingNodes(), INITIALIZING).size(), equalTo(1));
+
+        clusterState = ClusterState.builder(clusterState)
+            .nodes(DiscoveryNodes.builder(clusterState.nodes()).add(newNode("B-0", singletonMap("zone", "b"))))
+            .build();
 
         logger.info("--> start the shard (primary)");
         clusterState = startInitializingShardsAndReroute(strategy, clusterState);
@@ -1098,7 +1100,8 @@ public class AwarenessAllocationTests extends ESAllocationTestCase {
             new ClusterSettings(settings, ClusterSettings.BUILT_IN_CLUSTER_SETTINGS)
         );
 
-        final RoutingNode emptyNode = StreamSupport.stream(clusterState.getRoutingNodes().spliterator(), false)
+        final RoutingNode emptyNode = clusterState.getRoutingNodes()
+            .stream()
             .filter(RoutingNode::isEmpty)
             .findFirst()
             .orElseThrow(AssertionError::new);

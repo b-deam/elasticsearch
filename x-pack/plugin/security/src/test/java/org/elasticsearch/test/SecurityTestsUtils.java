@@ -6,14 +6,15 @@
  */
 package org.elasticsearch.test;
 
-import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.tests.util.LuceneTestCase;
 import org.elasticsearch.ElasticsearchSecurityException;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.license.LicenseUtils;
 import org.elasticsearch.rest.RestStatus;
+import org.elasticsearch.xpack.core.security.user.User;
 import org.hamcrest.Matcher;
 
-import static org.apache.lucene.util.LuceneTestCase.expectThrows;
+import static org.apache.lucene.tests.util.LuceneTestCase.expectThrows;
 import static org.elasticsearch.xpack.core.security.test.SecurityAssertions.assertContainsWWWAuthenticateHeader;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.either;
@@ -59,7 +60,38 @@ public class SecurityTestsUtils {
         );
     }
 
-    public static void assertThrowsAuthorizationExceptionRunAs(
+    public static void assertThrowsAuthorizationExceptionRunAsDenied(
+        LuceneTestCase.ThrowingRunnable throwingRunnable,
+        String action,
+        User authenticatingUser,
+        String runAs
+    ) {
+        assertThrowsAuthorizationException(
+            "Expected authorization failure for user=["
+                + authenticatingUser.principal()
+                + "], run-as=["
+                + runAs
+                + "], action=["
+                + action
+                + "]",
+            throwingRunnable,
+            containsString(
+                "action ["
+                    + action
+                    + "] is unauthorized for user ["
+                    + authenticatingUser.principal()
+                    + "]"
+                    + " with effective roles [%s]".formatted(Strings.arrayToCommaDelimitedString(authenticatingUser.roles()))
+                    + ", because user ["
+                    + authenticatingUser.principal()
+                    + "] is unauthorized to run as ["
+                    + runAs
+                    + "]"
+            )
+        );
+    }
+
+    public static void assertThrowsAuthorizationExceptionRunAsUnauthorizedAction(
         LuceneTestCase.ThrowingRunnable throwingRunnable,
         String action,
         String user,

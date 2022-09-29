@@ -62,8 +62,21 @@ public final class Profilers {
     /**
      * Build a profiler for the fetch phase.
      */
-    public FetchProfiler startProfilingFetchPhase() {
+    public static FetchProfiler startProfilingFetchPhase() {
         return new FetchProfiler();
+    }
+
+    /**
+     * Build the results for the dfs phase.
+     */
+    public SearchProfileDfsPhaseResult buildDfsPhaseResults() {
+        QueryProfiler queryProfiler = getCurrentQueryProfiler();
+        QueryProfileShardResult queryProfileShardResult = new QueryProfileShardResult(
+            queryProfiler.getTree(),
+            queryProfiler.getRewriteTime(),
+            queryProfiler.getCollector()
+        );
+        return new SearchProfileDfsPhaseResult(queryProfileShardResult);
     }
 
     /**

@@ -7,7 +7,7 @@
  */
 package org.elasticsearch.versioning;
 
-import org.apache.lucene.util.TestUtil;
+import org.apache.lucene.tests.util.TestUtil;
 import org.elasticsearch.action.ActionResponse;
 import org.elasticsearch.action.DocWriteRequest;
 import org.elasticsearch.action.DocWriteResponse;
@@ -258,9 +258,7 @@ public class SimpleVersioningIT extends ESIntegTestCase {
             // expected
             assertTrue(
                 iae.getMessage()
-                    .contains(
-                        "failed to parse setting [index.gc_deletes] with value [42] as a time value: unit is " + "missing or unrecognized"
-                    )
+                    .contains("failed to parse setting [index.gc_deletes] with value [42] as a time value: unit is missing or unrecognized")
             );
         }
     }

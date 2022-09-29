@@ -32,6 +32,7 @@ import org.elasticsearch.xpack.security.authc.Realms;
 import org.elasticsearch.xpack.security.authc.support.mapper.NativeRoleMappingStore;
 import org.elasticsearch.xpack.security.authz.store.CompositeRolesStore;
 import org.elasticsearch.xpack.security.operator.OperatorPrivileges;
+import org.elasticsearch.xpack.security.profile.ProfileService;
 import org.elasticsearch.xpack.security.transport.filter.IPFilter;
 
 import java.util.Arrays;
@@ -54,6 +55,7 @@ public class SecurityUsageTransportAction extends XPackUsageFeatureTransportActi
     private final CompositeRolesStore rolesStore;
     private final NativeRoleMappingStore roleMappingStore;
     private final IPFilter ipFilter;
+    private final ProfileService profileService;
 
     @Inject
     public SecurityUsageTransportAction(
@@ -80,6 +82,7 @@ public class SecurityUsageTransportAction extends XPackUsageFeatureTransportActi
         this.rolesStore = securityServices.rolesStore;
         this.roleMappingStore = securityServices.roleMappingStore;
         this.ipFilter = securityServices.ipFilter;
+        this.profileService = securityServices.profileService;
     }
 
     @Override
@@ -106,9 +109,11 @@ public class SecurityUsageTransportAction extends XPackUsageFeatureTransportActi
         final AtomicReference<Map<String, Object>> rolesUsageRef = new AtomicReference<>();
         final AtomicReference<Map<String, Object>> roleMappingUsageRef = new AtomicReference<>();
         final AtomicReference<Map<String, Object>> realmsUsageRef = new AtomicReference<>();
+        final AtomicReference<Map<String, Object>> domainsUsageRef = new AtomicReference<>();
+        final AtomicReference<Map<String, Object>> userProfileUsageRef = new AtomicReference<>();
 
         final boolean enabled = XPackSettings.SECURITY_ENABLED.get(settings);
-        final CountDown countDown = new CountDown(3);
+        final CountDown countDown = new CountDown(4);
         final Runnable doCountDown = () -> {
             if (countDown.countDown()) {
                 var usage = new SecurityFeatureSetUsage(
@@ -123,7 +128,9 @@ public class SecurityUsageTransportAction extends XPackUsageFeatureTransportActi
                     tokenServiceUsage,
                     apiKeyServiceUsage,
                     fips140Usage,
-                    operatorPrivilegesUsage
+                    operatorPrivilegesUsage,
+                    domainsUsageRef.get(),
+                    userProfileUsageRef.get()
                 );
                 listener.onResponse(new XPackUsageFeatureResponse(usage));
             }
@@ -145,6 +152,11 @@ public class SecurityUsageTransportAction extends XPackUsageFeatureTransportActi
             doCountDown.run();
         }, listener::onFailure);
 
+        final ActionListener<Map<String, Object>> userProfileUsageListener = ActionListener.wrap(userProfileUsage -> {
+            userProfileUsageRef.set(userProfileUsage);
+            doCountDown.run();
+        }, listener::onFailure);
+
         if (rolesStore == null || enabled == false) {
             rolesStoreUsageListener.onResponse(Collections.emptyMap());
         } else {
@@ -156,11 +168,17 @@ public class SecurityUsageTransportAction extends XPackUsageFeatureTransportActi
             roleMappingStore.usageStats(roleMappingStoreUsageListener);
         }
         if (realms == null || enabled == false) {
+            domainsUsageRef.set(Map.of());
             realmsUsageListener.onResponse(Collections.emptyMap());
         } else {
+            domainsUsageRef.set(realms.domainUsageStats());
             realms.usageStats(realmsUsageListener);
         }
-
+        if (profileService == null || enabled == false) {
+            userProfileUsageListener.onResponse(Map.of());
+        } else {
+            profileService.usageStats(userProfileUsageListener);
+        }
     }
 
     static Map<String, Object> sslUsage(Settings settings) {

@@ -29,7 +29,6 @@ import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 
-import static org.elasticsearch.cluster.metadata.DataStreamTestHelper.createTimestampField;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 
@@ -50,7 +49,7 @@ public class WaitForActiveShardsTests extends AbstractStepTestCase<WaitForActive
 
         switch (between(0, 1)) {
             case 0 -> key = new StepKey(key.getPhase(), key.getAction(), key.getName() + randomAlphaOfLength(5));
-            case 1 -> nextKey = new StepKey(key.getPhase(), key.getAction(), key.getName() + randomAlphaOfLength(5));
+            case 1 -> nextKey = new StepKey(nextKey.getPhase(), nextKey.getAction(), nextKey.getName() + randomAlphaOfLength(5));
             default -> throw new AssertionError("Illegal randomisation branch");
         }
 
@@ -188,11 +187,7 @@ public class WaitForActiveShardsTests extends AbstractStepTestCase<WaitForActive
             .metadata(
                 Metadata.builder()
                     .put(
-                        DataStreamTestHelper.newInstance(
-                            dataStreamName,
-                            createTimestampField("@timestamp"),
-                            List.of(originalIndexMeta.getIndex(), rolledIndexMeta.getIndex())
-                        )
+                        DataStreamTestHelper.newInstance(dataStreamName, List.of(originalIndexMeta.getIndex(), rolledIndexMeta.getIndex()))
                     )
                     .put(originalIndexMeta, true)
                     .put(rolledIndexMeta, true)

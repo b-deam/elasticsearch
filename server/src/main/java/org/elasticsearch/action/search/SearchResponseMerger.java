@@ -135,7 +135,7 @@ final class SearchResponseMerger {
 
             profileResults.putAll(searchResponse.getProfileResults());
 
-            if (searchResponse.getAggregations() != null) {
+            if (searchResponse.hasAggregations()) {
                 InternalAggregations internalAggs = (InternalAggregations) searchResponse.getAggregations();
                 aggs.add(internalAggs);
             }
@@ -195,7 +195,9 @@ final class SearchResponseMerger {
         SearchHits mergedSearchHits = topDocsToSearchHits(topDocs, topDocsStats);
         setSuggestShardIndex(shards, groupedSuggestions);
         Suggest suggest = groupedSuggestions.isEmpty() ? null : new Suggest(Suggest.reduce(groupedSuggestions));
-        InternalAggregations reducedAggs = InternalAggregations.topLevelReduce(aggs, aggReduceContextBuilder.forFinalReduction());
+        InternalAggregations reducedAggs = aggs.isEmpty()
+            ? InternalAggregations.EMPTY
+            : InternalAggregations.topLevelReduce(aggs, aggReduceContextBuilder.forFinalReduction());
         ShardSearchFailure[] shardFailures = failures.toArray(ShardSearchFailure.EMPTY_ARRAY);
         SearchProfileResults profileShardResults = profileResults.isEmpty() ? null : new SearchProfileResults(profileResults);
         // make failures ordering consistent between ordinary search and CCS by looking at the shard they come from
@@ -258,7 +260,7 @@ final class SearchResponseMerger {
             return clusterAlias1.compareTo(clusterAlias2);
         }
 
-        private ShardId extractShardId(ShardSearchFailure failure) {
+        private static ShardId extractShardId(ShardSearchFailure failure) {
             SearchShardTarget shard = failure.shard();
             if (shard != null) {
                 return shard.getShardId();

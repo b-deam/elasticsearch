@@ -36,7 +36,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
 
 public final class TransformNodes {
 
@@ -124,8 +123,7 @@ public final class TransformNodes {
      * @return number of transform nodes
      */
     public static boolean hasAnyTransformNode(DiscoveryNodes nodes) {
-        return StreamSupport.stream(nodes.spliterator(), false)
-            .anyMatch(node -> node.getRoles().contains(DiscoveryNodeRole.TRANSFORM_ROLE));
+        return nodes.stream().anyMatch(node -> node.getRoles().contains(DiscoveryNodeRole.TRANSFORM_ROLE));
     }
 
     /**
@@ -183,7 +181,7 @@ public final class TransformNodes {
             } else {
                 Map<String, String> explain = new TreeMap<>();
                 for (DiscoveryNode node : nodes) {
-                    nodeCanRunThisTransform(node, Version.V_7_13_0, requiresRemote, explain);
+                    nodeCanRunThisTransform(node, null, requiresRemote, explain);
                 }
                 // There are no appropriate nodes in the cluster, fail
                 listener.onFailure(
@@ -202,18 +200,13 @@ public final class TransformNodes {
      * Select any node among provided nodes that satisfies all of the following:
      *  - is a transform node
      *  - is a remote_cluster_client node (in case this transform uses CCS, i.e. requires access to remote indices)
-     *  - runs at least version 7.13
-     *    This is needed as version 7.13 contains changes in wire format of {@code TransformDestIndexSettings} which are needed to correctly
-     *    read the redirected response.
      *
      * @param nodes nodes to select from
      * @param requiresRemote whether this transform requires access to remote indices
      * @return selected node or {@code Optional.empty()} if none of the nodes satisfy the conditions
      */
     static Optional<DiscoveryNode> selectAnyNodeThatCanRunThisTransform(DiscoveryNodes nodes, boolean requiresRemote) {
-        return StreamSupport.stream(nodes.spliterator(), false)
-            .filter(node -> nodeCanRunThisTransform(node, Version.V_7_13_0, requiresRemote, null))
-            .findAny();
+        return nodes.stream().filter(node -> nodeCanRunThisTransform(node, null, requiresRemote, null)).findAny();
     }
 
     public static boolean nodeCanRunThisTransform(
@@ -223,7 +216,7 @@ public final class TransformNodes {
         Map<String, String> explain
     ) {
         // version of the transform run on a node that has at least the same version
-        if (node.getVersion().onOrAfter(minRequiredVersion) == false) {
+        if (minRequiredVersion != null && node.getVersion().onOrAfter(minRequiredVersion) == false) {
             if (explain != null) {
                 explain.put(
                     node.getId(),

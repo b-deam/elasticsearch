@@ -25,6 +25,7 @@ import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.index.StoredFieldVisitor;
 import org.apache.lucene.index.Terms;
+import org.apache.lucene.index.VectorEncoding;
 import org.apache.lucene.index.VectorSimilarityFunction;
 import org.apache.lucene.index.VectorValues;
 import org.apache.lucene.index.memory.MemoryIndex;
@@ -41,7 +42,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 /**
  * A {@link LeafReader} over a lucene document that exposes doc values and stored fields.
@@ -83,7 +83,7 @@ class DocumentLeafReader extends LeafReader {
             .filter(f -> f.fieldType().docValuesType() == DocValuesType.NUMERIC)
             .map(IndexableField::numericValue)
             .sorted()
-            .collect(Collectors.toList());
+            .toList();
         return numericDocValues(values);
     }
 
@@ -96,7 +96,7 @@ class DocumentLeafReader extends LeafReader {
             .filter(f -> f.fieldType().docValuesType() == DocValuesType.BINARY)
             .map(IndexableField::binaryValue)
             .sorted()
-            .collect(Collectors.toList());
+            .toList();
         return binaryDocValues(values);
     }
 
@@ -109,7 +109,7 @@ class DocumentLeafReader extends LeafReader {
             .filter(f -> f.fieldType().docValuesType() == DocValuesType.SORTED)
             .map(IndexableField::binaryValue)
             .sorted()
-            .collect(Collectors.toList());
+            .toList();
         return sortedDocValues(values);
     }
 
@@ -122,7 +122,7 @@ class DocumentLeafReader extends LeafReader {
             .filter(f -> f.fieldType().docValuesType() == DocValuesType.SORTED_NUMERIC)
             .map(IndexableField::numericValue)
             .sorted()
-            .collect(Collectors.toList());
+            .toList();
         return sortedNumericDocValues(values);
     }
 
@@ -135,7 +135,7 @@ class DocumentLeafReader extends LeafReader {
             .filter(f -> f.fieldType().docValuesType() == DocValuesType.SORTED_SET)
             .map(IndexableField::binaryValue)
             .sorted()
-            .collect(Collectors.toList());
+            .toList();
         return sortedSetDocValues(values);
     }
 
@@ -146,7 +146,7 @@ class DocumentLeafReader extends LeafReader {
 
     @Override
     public void document(int docID, StoredFieldVisitor visitor) throws IOException {
-        List<IndexableField> fields = document.getFields().stream().filter(f -> f.fieldType().stored()).collect(Collectors.toList());
+        List<IndexableField> fields = document.getFields().stream().filter(f -> f.fieldType().stored()).toList();
         for (IndexableField field : fields) {
             FieldInfo fieldInfo = fieldInfo(field.name());
             if (visitor.needsField(fieldInfo) != StoredFieldVisitor.Status.YES) {
@@ -196,7 +196,7 @@ class DocumentLeafReader extends LeafReader {
     }
 
     @Override
-    public TopDocs searchNearestVectors(String field, float[] target, int k, Bits acceptDocs) throws IOException {
+    public TopDocs searchNearestVectors(String field, float[] target, int k, Bits acceptDocs, int visitedLimit) {
         throw new UnsupportedOperationException();
     }
 
@@ -262,6 +262,7 @@ class DocumentLeafReader extends LeafReader {
             0,
             0,
             0,
+            VectorEncoding.FLOAT32,
             VectorSimilarityFunction.EUCLIDEAN,
             false
         );
@@ -458,6 +459,11 @@ class DocumentLeafReader extends LeafReader {
                     return NO_MORE_ORDS;
                 }
                 return i;
+            }
+
+            @Override
+            public int docValueCount() {
+                return values.size();
             }
 
             @Override

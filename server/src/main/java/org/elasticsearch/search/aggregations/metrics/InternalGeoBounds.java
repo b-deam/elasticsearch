@@ -14,6 +14,7 @@ import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.search.aggregations.AggregationReduceContext;
 import org.elasticsearch.search.aggregations.InternalAggregation;
+import org.elasticsearch.search.aggregations.support.SamplingContext;
 import org.elasticsearch.xcontent.XContentBuilder;
 
 import java.io.IOException;
@@ -116,6 +117,11 @@ public class InternalGeoBounds extends InternalAggregation implements GeoBounds 
     }
 
     @Override
+    public InternalAggregation finalizeSampling(SamplingContext samplingContext) {
+        return this;
+    }
+
+    @Override
     protected boolean mustReduceOnSingleInternalAgg() {
         return false;
     }
@@ -159,7 +165,7 @@ public class InternalGeoBounds extends InternalAggregation implements GeoBounds 
         GeoBoundingBox bbox = resolveGeoBoundingBox();
         if (bbox != null) {
             builder.startObject(GeoBoundingBox.BOUNDS_FIELD.getPreferredName());
-            bbox.toXContentFragment(builder, true);
+            bbox.toXContentFragment(builder);
             builder.endObject();
         }
         return builder;

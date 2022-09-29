@@ -10,6 +10,7 @@ package org.elasticsearch.common.bytes;
 
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.common.io.stream.StreamInput;
+import org.elasticsearch.common.util.ByteUtils;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -53,6 +54,16 @@ public final class BytesArray extends AbstractBytesReference {
     @Override
     public byte get(int index) {
         return bytes[offset + index];
+    }
+
+    @Override
+    public int indexOf(byte marker, int from) {
+        for (int i = offset + from; i < offset + length; i++) {
+            if (bytes[i] == marker) {
+                return i - offset;
+            }
+        }
+        return -1;
     }
 
     @Override
@@ -119,5 +130,10 @@ public final class BytesArray extends AbstractBytesReference {
     @Override
     public void writeTo(OutputStream os) throws IOException {
         os.write(bytes, offset, length);
+    }
+
+    @Override
+    public int getIntLE(int index) {
+        return ByteUtils.readIntLE(bytes, offset + index);
     }
 }

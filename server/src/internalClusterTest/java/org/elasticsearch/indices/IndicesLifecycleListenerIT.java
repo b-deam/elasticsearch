@@ -43,6 +43,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.elasticsearch.cluster.metadata.IndexMetadata.INDEX_ROUTING_EXCLUDE_GROUP_PREFIX;
 import static org.elasticsearch.cluster.metadata.IndexMetadata.SETTING_NUMBER_OF_REPLICAS;
 import static org.elasticsearch.cluster.metadata.IndexMetadata.SETTING_NUMBER_OF_SHARDS;
 import static org.elasticsearch.index.shard.IndexShardState.CLOSED;
@@ -105,7 +106,7 @@ public class IndicesLifecycleListenerIT extends ESIntegTestCase {
         } catch (Exception e) {
             assertTrue(e.getMessage().contains("failing on purpose"));
             ClusterStateResponse resp = client().admin().cluster().prepareState().get();
-            assertFalse(resp.getState().routingTable().indicesRouting().keys().contains("failed"));
+            assertFalse(resp.getState().routingTable().indicesRouting().keySet().contains("failed"));
         }
     }
 
@@ -137,6 +138,32 @@ public class IndicesLifecycleListenerIT extends ESIntegTestCase {
         assertThat(state.nodes().resolveNode(shard.get(0).currentNodeId()).getName(), Matchers.equalTo(node1));
     }
 
+    public void testRelocationFailureNotRetriedForever() {
+        String node1 = internalCluster().startNode();
+        client().admin()
+            .indices()
+            .prepareCreate("index1")
+            .setSettings(Settings.builder().put(SETTING_NUMBER_OF_SHARDS, 1).put(SETTING_NUMBER_OF_REPLICAS, 0))
+            .get();
+        ensureGreen("index1");
+        for (int i = 0; i < 2; i++) {
+            internalCluster().getInstance(MockIndexEventListener.TestEventListener.class, internalCluster().startNode())
+                .setNewDelegate(new IndexShardStateChangeListener() {
+                    @Override
+                    public void beforeIndexCreated(Index index, Settings indexSettings) {
+                        throw new RuntimeException("FAIL");
+                    }
+                });
+        }
+        assertAcked(
+            client().admin()
+                .indices()
+                .prepareUpdateSettings("index1")
+                .setSettings(Settings.builder().put(INDEX_ROUTING_EXCLUDE_GROUP_PREFIX + "._name", node1))
+        );
+        ensureGreen("index1");
+    }
+
     public void testIndexStateShardChanged() throws Throwable {
         // start with a single node
         String node1 = internalCluster().startNode();
@@ -155,7 +182,7 @@ public class IndicesLifecycleListenerIT extends ESIntegTestCase {
         } catch (ElasticsearchException e) {
             assertTrue(e.getMessage().contains("failing on purpose"));
             ClusterStateResponse resp = client().admin().cluster().prepareState().get();
-            assertFalse(resp.getState().routingTable().indicesRouting().keys().contains("failed"));
+            assertFalse(resp.getState().routingTable().indicesRouting().keySet().contains("failed"));
         }
 
         // create an index

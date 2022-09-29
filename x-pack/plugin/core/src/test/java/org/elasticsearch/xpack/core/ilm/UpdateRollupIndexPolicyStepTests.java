@@ -45,7 +45,7 @@ public class UpdateRollupIndexPolicyStepTests extends AbstractStepTestCase<Updat
 
         switch (between(0, 2)) {
             case 0 -> key = new StepKey(key.getPhase(), key.getAction(), key.getName() + randomAlphaOfLength(5));
-            case 1 -> nextKey = new StepKey(key.getPhase(), key.getAction(), key.getName() + randomAlphaOfLength(5));
+            case 1 -> nextKey = new StepKey(nextKey.getPhase(), nextKey.getAction(), nextKey.getName() + randomAlphaOfLength(5));
             case 2 -> rollupPolicy = randomAlphaOfLength(5);
             default -> throw new AssertionError("Illegal randomisation branch");
         }
@@ -133,7 +133,7 @@ public class UpdateRollupIndexPolicyStepTests extends AbstractStepTestCase<Updat
             .numberOfShards(randomIntBetween(1, 5))
             .numberOfReplicas(randomIntBetween(0, 5))
             .build();
-        String policyName = indexMetadata.getSettings().get(LifecycleSettings.LIFECYCLE_NAME);
+        String policyName = indexMetadata.getLifecyclePolicyName();
         String indexName = indexMetadata.getIndex().getName();
         UpdateRollupIndexPolicyStep step = createRandomInstance();
         step.performAction(indexMetadata, emptyClusterState(), null, new ActionListener<>() {
